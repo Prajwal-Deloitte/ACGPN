@@ -1,19 +1,41 @@
 import time
-from collections import OrderedDict
-from options.test_options import TestOptions
-from data.data_loader import CreateDataLoader
-from models.models import create_model
-import util.util as util
+import cv2
 import os
 import numpy as np
 import torch
+import boto3
+import base64
+from boto3 import client
 from torch.autograd import Variable
+from collections import OrderedDict
+print("Inside test.py file, before importing preprocessing")
+
+import preprocessing
+from preprocessing import inference
+import options
+from options.test_options import TestOptions
+import data
+from data.data_loader import CreateDataLoader
+import models
+from models.models import create_model
+import util
+from util.util import save_tensor_as_image, tensor2label
+import json
+
+import config
+from config import get_bucket_name, get_root_path, get_result_path
+
+
+# from .preprocessing import inference
 #from tensorboardX import SummaryWriter
-import cv2
 #writer = SummaryWriter('runs/G1G2')
 SIZE = 320
 NC = 14
 
+BUCKET_NAME= get_bucket_name()
+ROOT_PATH = get_root_path()
+RESULT_PATH= get_result_path()
+result_img = ""
 
 def generate_label_plain(inputs):
     size = inputs.size()
@@ -33,7 +55,7 @@ def generate_label_plain(inputs):
 def generate_label_color(inputs):
     label_batch = []
     for i in range(len(inputs)):
-        label_batch.append(util.tensor2label(inputs[i], NC))
+        label_batch.append(tensor2label(inputs[i], NC))
     label_batch = np.array(label_batch)
     label_batch = label_batch * 2 - 1
     input_label = torch.from_numpy(label_batch)
@@ -70,30 +92,58 @@ def changearm(old_label):
     label = label*(1-noise)+noise*4
     return label
 
+#model function
+def model_fn(model_dir):  
+    return "inside model fn"
 
-def main():
-    os.makedirs('sample', exist_ok=True)
+#input function
+def input_fn(request_body, request_content_type):
+    if request_content_type == 'application/json':
+        request_body = json.loads(request_body)
+        inpVar = request_body['Input']
+        
+        return inpVar
+    else:
+        raise ValueError("This model only supports application/json input")
+
+#predict fuction
+def predict_fn(input_data, model):
+    inference(input_data)
+    user_id = input_data[0].split(".")[0]
+    cloth_id = input_data[1].split(".")[0]
+        
+    print("user id input : ", user_id)
+    print("cloth_id input : ", cloth_id)
+        
+    result_img = user_id+"_"+cloth_id+".png"
+    print("result imange name : ", result_img)
+    
+    #model fn part
+    
+    # os.makedirs('/.sagemaker/mms/models/model/code/sample', exist_ok=True)
+    # print("Print current folders in code, after creating Sample folder",os.listdir('/.sagemaker/mms/models/model/code'))
+    
     opt = TestOptions().parse()
-
+    # print("-----Test.py opt----")
     data_loader = CreateDataLoader(opt)
+    print("Test.py dataloader: ",data_loader)
+    print("LOAD DATA\n",data_loader.load_data())
+    print(len(data_loader))
     dataset = data_loader.load_data()
     dataset_size = len(data_loader)
     print('# Inference images = %d' % dataset_size)
 
-    model = create_model(opt)
-
+    model = create_model(opt)  
+    
     for i, data in enumerate(dataset):
 
         # add gaussian noise channel
         # wash the label
-        t_mask = torch.FloatTensor(
-            (data['label'].cpu().numpy() == 7).astype(np.float))
-        #
+        t_mask = torch.FloatTensor((data['label'].cpu().numpy() == 7).astype(np.float))
+        
         # data['label'] = data['label'] * (1 - t_mask) + t_mask * 4
-        mask_clothes = torch.FloatTensor(
-            (data['label'].cpu().numpy() == 4).astype(np.int))
-        mask_fore = torch.FloatTensor(
-            (data['label'].cpu().numpy() > 0).astype(np.int))
+        mask_clothes = torch.FloatTensor((data['label'].cpu().numpy() == 4).astype(np.int))
+        mask_fore = torch.FloatTensor((data['label'].cpu().numpy() > 0).astype(np.int))
         img_fore = data['image'] * mask_fore
         img_fore_wc = img_fore * mask_fore
         all_clothes_label = changearm(data['label'])
@@ -114,13 +164,21 @@ def main():
         # save output
         for j in range(opt.batchSize):
             print("Saving", data['name'][j])
-            util.save_tensor_as_image(fake_image[j],
+            save_tensor_as_image(fake_image[j],
                                       os.path.join(fake_image_dir, data['name'][j]))
-            util.save_tensor_as_image(warped_cloth[j],
+            save_tensor_as_image(warped_cloth[j],
                                       os.path.join(warped_cloth_dir, data['name'][j]))
-            util.save_tensor_as_image(refined_cloth[j],
+            save_tensor_as_image(refined_cloth[j],
                                       os.path.join(refined_cloth_dir, data['name'][j]))
+                                      
+    return result_img
 
-
-if __name__ == '__main__':
-    main()
+#Output function
+def output_fn(prediction, content_type):
+    # res = int(prediction[0])
+    print("result imange name : ", prediction)
+    respJSON = {'Output': prediction}
+    s3 = boto3.resource('s3')
+    s3.meta.client.upload_file(ROOT_PATH+"results/test/try-on/000001_0.png", BUCKET_NAME, RESULT_PATH + prediction)
+    print("After image save in test.py",os.listdir(ROOT_PATH + 'results/test/try-on'))
+    return respJSON
