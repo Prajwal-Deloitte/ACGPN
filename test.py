@@ -25,7 +25,6 @@ import json
 import config
 from config import get_bucket_name, get_root_path, get_result_path
 
-
 # from .preprocessing import inference
 #from tensorboardX import SummaryWriter
 #writer = SummaryWriter('runs/G1G2')
@@ -92,11 +91,11 @@ def changearm(old_label):
     label = label*(1-noise)+noise*4
     return label
 
-#model function
+"""model function"""
 def model_fn(model_dir):  
     return "inside model fn"
 
-#input function
+"""input function"""
 def input_fn(request_body, request_content_type):
     if request_content_type == 'application/json':
         request_body = json.loads(request_body)
@@ -106,7 +105,7 @@ def input_fn(request_body, request_content_type):
     else:
         raise ValueError("This model only supports application/json input")
 
-#predict fuction
+"""predict fuction"""
 def predict_fn(input_data, model):
     inference(input_data)
     user_id = input_data[0].split(".")[0]
@@ -173,7 +172,7 @@ def predict_fn(input_data, model):
                                       
     return result_img
 
-#Output function
+"""Output function"""
 def output_fn(prediction, content_type):
     # res = int(prediction[0])
     print("result imange name : ", prediction)
@@ -182,3 +181,8 @@ def output_fn(prediction, content_type):
     s3.meta.client.upload_file(ROOT_PATH+"results/test/try-on/000001_0.png", BUCKET_NAME, RESULT_PATH + prediction)
     print("After image save in test.py",os.listdir(ROOT_PATH + 'results/test/try-on'))
     return respJSON
+
+# def main():
+#     model_fn()
+    
+# main()

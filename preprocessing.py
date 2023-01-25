@@ -1,3 +1,4 @@
+
 import os
 import glob
 import numpy as np
@@ -23,6 +24,10 @@ from boto3 import client
 import config
 from config import get_bucket_name, get_root_path, get_cloth_name, get_image_name, get_test_color, get_colormask, get_test_edge, get_test_img, get_test_label, get_test_mask, get_test_pose, get_inputs_path, get_person_img_path, get_cloth_img_path, get_test_pairs
 
+from platform import python_version
+
+print(python_version())
+
 BUCKET_NAME = get_bucket_name()
 ROOT_PATH = get_root_path()
 
@@ -41,6 +46,7 @@ TEST_MASK = get_test_mask()
 TEST_POSE = get_test_pose()
 TEST_PAIRS = get_test_pairs()
 
+"""Making directories inside Data preprocessing"""
 def make_directories():
     os.makedirs(ROOT_PATH + TEST_COLOR+ "/", exist_ok=True)    
     os.makedirs(ROOT_PATH + COLORMASK+ "/", exist_ok=True)    
@@ -57,6 +63,7 @@ def make_directories():
     print("Print current folders in data preprocessing after creating folders",os.listdir(ROOT_PATH + 'Data_preprocessing'))  
     print("Print current folders in code after creating folders",os.listdir(ROOT_PATH))  
 
+"""Saving input data from S3 in folders"""
 def save_input_data(input_data):
     person_image = "user_images/"+input_data[0] 
     cloth_image = "products/"+input_data[1]   
@@ -69,7 +76,7 @@ def save_input_data(input_data):
     print("Print inputs cloth folder data bucket images --- ",os.listdir(ROOT_PATH+CLOTH_IMG))    
     print("Print inputs img folder data bucket images --- ",os.listdir(ROOT_PATH+PERSON_IMG))  
     
-    
+"""Generating cloth mask (Cloth preprocessing)"""    
 def generate_cloth_mask():
     u2netload_start_time = time.time()
     u2net = u2net_load.model(model_name='u2netp')
@@ -95,6 +102,10 @@ def generate_cloth_mask():
     print('cloth mask image in {}s'.format(clothmask_time-cloth_start_time))
     print("Print current folder after u2net infer in test edge",os.listdir(ROOT_PATH+TEST_EDGE))
     
+    #uploading cloth mask to s3 for comparsion
+    s3 = boto3.resource('s3')
+    s3.meta.client.upload_file(ROOT_PATH+ TEST_EDGE + "/" + CLOTH_NAME, BUCKET_NAME, "comparison/cloth_mask.png")
+    
 # def background_removal():
 #     change_background_mp = mp.solutions.selfie_segmentation
 #     change_bg_segment = change_background_mp.Selget_image_namefieSegmentation()
@@ -109,7 +120,8 @@ def generate_cloth_mask():
 #     os.system("rm -rf /.sagemaker/mms/models/model/code/inputs/img/*")
 #     image = Image.fromarray(output_image[:, :, ::-1].astype('uint8'))
 #     image.save("/.sagemaker/mms/models/model/code/inputs/img/New.png", "png")
-    
+
+"""Resizing human image"""    
 def resize_human_image():
     start_time = time.time()
     
@@ -119,13 +131,12 @@ def resize_human_image():
     img_path = os.path.join(ROOT_PATH + TEST_IMG, IMG_NAME)
     img.save(img_path)
     print("Print current folder after save person test_img",os.listdir(ROOT_PATH+TEST_IMG))
-    s3 = boto3.resource('s3')
-    s3.meta.client.upload_file(ROOT_PATH+TEST_IMG+"/000001_0.png",BUCKET_NAME,"test_img.png")
     
     
     resize_time = time.time()
     print('Resized image in {}s'.format(resize_time-start_time))
-    
+
+"""Human parsing (Pose preprocessing)"""    
 def self_correction_human_parsing():
     start_time = time.time()
     schp_input_dir= ROOT_PATH + 'Data_preprocessing/test_img'
@@ -148,15 +159,26 @@ def self_correction_human_parsing():
     parse_time = time.time()
     print('Parsing generated in {}s'.format(parse_time-start_time))
     
+    
+    #uploading test label to s3 for comparsion
+    s3 = boto3.resource('s3')
+    s3.meta.client.upload_file(ROOT_PATH+ TEST_LABEL+ "/000001_0.png", BUCKET_NAME, "comparison/test_label.png")
+
+"""Generating human pose keypoints"""    
 def generate_keypoints():
     start_time = time.time()
-    img_path = os.path.join(ROOT_PATH + PERSON_IMG, sorted(os.listdir(ROOT_PATH + PERSON_IMG))[0])
+    img_path = os.path.join(ROOT_PATH + TEST_IMG, sorted(os.listdir(ROOT_PATH + TEST_IMG))[0])
     pose_path = os.path.join(ROOT_PATH + TEST_POSE, IMG_NAME.replace('.png', '_keypoints.json'))
     generate_pose_keypoints(img_path, pose_path)
     pose_time = time.time()
     print('Pose map generated in {}s'.format(pose_time-start_time))
     print("Print current folder after pose generation in test_pose",os.listdir(ROOT_PATH+TEST_POSE))
     
+     #uploading person keypoints to s3 for comparsion
+    s3 = boto3.resource('s3')
+    s3.meta.client.upload_file(ROOT_PATH+ TEST_POSE +"/000001_0_keypoints.json", BUCKET_NAME, "comparison/keypoints.json")
+
+"""Creating test pairs"""     
 def generate_test_pairs():
     with open(ROOT_PATH + TEST_PAIRS, 'w') as f:
         f.write('000001_0.png 000001_1.png')
@@ -164,6 +186,16 @@ def generate_test_pairs():
     with open(ROOT_PATH + TEST_PAIRS, 'r') as f:
         print("Content inside test-pairs.txt " , f.read())
     
+"""Calling the functions"""
+def inference(input_data): 
+    make_directories()
+    save_input_data(input_data)  
+    generate_cloth_mask()
+    # background_removal()
+    resize_human_image()
+    self_correction_human_parsing()
+    generate_keypoints()
+    generate_test_pairs()
 
 # def inference(input_data): 
     #getting bucket name, root path
@@ -269,15 +301,3 @@ def generate_test_pairs():
 #     with open(ROOT_PATH + 'Data_preprocessing/test_pairs.txt', 'r') as f:
 #         # f.write('000001_0.png 000001_1.png')
 #         print("Content inside test-pairs.txt " , f.read())
-
-
-def inference(input_data): 
-    
-    make_directories()
-    save_input_data(input_data)  
-    generate_cloth_mask()
-    # background_removal()
-    resize_human_image()
-    self_correction_human_parsing()
-    generate_keypoints()
-    generate_test_pairs()

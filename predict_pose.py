@@ -83,7 +83,7 @@ class general_pose_model(object):
 
 def generate_pose_keypoints(img_file, pose_file):
 
-    modelpath = 'pose'
+    modelpath = 'code/pose'
     pose_model = general_pose_model(modelpath)
 
     res_points = pose_model.predict(img_file)
@@ -102,4 +102,3 @@ def generate_pose_keypoints(img_file, pose_file):
     with open(pose_keypoints_path, "w") as outfile: 
         outfile.write(json_object) 
     print('File saved at {}'.format(pose_keypoints_path))
-

@@ -10,13 +10,14 @@ class BaseOptions():
         self.initialized = False
 
     def initialize(self):
+        
         # experiment specifics
         self.parser.add_argument('--name', type=str, default='label2city',
                                  help='name of the experiment. It decides where to store samples and models')
         self.parser.add_argument('--gpu_ids', type=str, default='0',
                                  help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         self.parser.add_argument('--checkpoints_dir', type=str,
-                                 default='./checkpoints', help='models are saved here')
+                                 default='/.sagemaker/mms/models/model/code/checkpoints', help='models are saved here')
         self.parser.add_argument(
             '--model', type=str, default='pix2pixHD', help='which model to use')
         self.parser.add_argument('--norm', type=str, default='instance',
@@ -44,7 +45,7 @@ class BaseOptions():
 
         # for setting inputs
         self.parser.add_argument(
-            '--dataroot', type=str, default='Data_preprocessing/')
+            '--dataroot', type=str, default='/.sagemaker/mms/models/model/code/Data_preprocessing/')
         self.parser.add_argument('--datapairs', type=str, default='test_pairs.txt',
                                  help='train_pairs.txt/test_pairs.txt/test_pairs_same.txt etc.')
 
@@ -89,9 +90,12 @@ class BaseOptions():
         self.initialized = True
 
     def parse(self, save=True):
+        
         if not self.initialized:
             self.initialize()
-        self.opt = self.parser.parse_args()
+        
+        # self.opt = self.parser.parse_args()
+        self.opt, self.unknown = self.parser.parse_known_args()
         self.opt.isTrain = self.isTrain   # train or test
 
         str_ids = self.opt.gpu_ids.split(',')
@@ -104,9 +108,8 @@ class BaseOptions():
         # set gpu ids
         if len(self.opt.gpu_ids) > 0:
             torch.cuda.set_device(self.opt.gpu_ids[0])
-
         args = vars(self.opt)
-
+        
         print('------------ Options -------------')
         for k, v in sorted(args.items()):
             print('%s: %s' % (str(k), str(v)))
